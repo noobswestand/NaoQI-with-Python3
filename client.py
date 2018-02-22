@@ -1,5 +1,6 @@
 import socket
 import sys
+import numpy as np
 print(sys.version)
 
 def say(txt):
@@ -11,11 +12,62 @@ def posture_get():
 def posture_set(pos,speed=1):
 	packet = {"id":1,"action":"set","posture":pos,"speed":speed}
 	Main(packet)
-
 def motion_set(names,angles,speed=0.3):
-	packet = {"id":2,"names":"|".join(str(x) for x in names),"angles":"|".join(str(x) for x in angles),"speed":speed}
+	packet = {"id":2,"action":"set","names":"|".join(str(x) for x in names),"angles":"|".join(str(x) for x in angles),"speed":speed}
+	Main(packet)
+def motion_get(names):
+	packet = {"id":2,"action":"get","names":"|".join(str(x) for x in names)}
+	return Main(packet)
+
+def motion_stiff_get(names):
+	packet = {"id":4,"action":"get","names":"|".join(str(x) for x in names)}
+	return Main(packet)
+def motion_stiff_set(names,stiff):
+	if type(stiff) is list:
+		packet = {"id":4,"action":"set","names":"|".join(str(x) for x in names),"stiff":"|".join(str(x) for x in stiff)}
+	else:
+		packet = {"id":4,"action":"set","names":"|".join(str(x) for x in names),"stiff":str(stiff)}
 	Main(packet)
 
+def volume_get():
+	packet = {"id":3,"action":"get"}
+	return Main(packet)
+def volume_set(vol):
+	packet = {"id":3,"action":"set","volume":vol}
+	Main(packet)
+
+def led_group_create(groupName,names):
+	packet = {"id":5,"action":"groupCreate","groupName":groupName,"ledNames":names}
+	Main(packet)
+def led_on(groupName):
+	packet = {"id":5,"action":"on","groupName":groupName}
+	Main(packet)
+def led_off(groupName):
+	packet = {"id":5,"action":"off","groupName":groupName}
+	Main(packet)
+def led_fade(groupName,i,d):
+	packet = {"id":5,"action":"fade","groupName":groupName,"i":i,"d":d}
+	Main(packet)
+def led_fade_rgb(groupName,colorList,d):
+	packet = {"id":5,"action":"fadelrgb","groupName":groupName,"colorlist":colorList,"d":d}
+	Main(packet)
+def led_fade_rgb(groupName,color,d):
+	packet = {"id":5,"action":"fadergb","groupName":groupName,"color":color,"d":d}
+	Main(packet)
+def led_get(led):
+	packet = {"id":5,"action":"get","led":led}
+	return Main(packet)
+def led_group_get():
+	packet = {"id":5,"action":"getGroup"}
+	return Main(packet)
+def led_reset(g):
+	packet = {"id":5,"action":"get","led":g}
+	return Main(packet)
+
+
+def camera_get():
+	packet = {"id":6,"action":"get"}
+	return Main(packet)
 
 def Main(packet):
 	host = "127.0.0.1"
@@ -26,34 +78,51 @@ def Main(packet):
 
 	data={"id":0}
 	while data["id"]>=0:
-		data = s.recv(1024)
+		data = s.recv(1024*4)
 		data = eval(data)
 
+		#print(data)
 		_id=data["id"]
+
+		if _id==0:
+			print(data["error"])
+			break;
 
 		if _id==1:
 			return data["posture"]
-
+		if _id==2:#Motion
+			angles=data["angles"].split("|")
+			angles = [int(round(float(x))) for x in angles]
+			return angles
+		if _id==3:#Volume
+			vol=data["volume"]
+			return int(vol)
+		if _id==4:#Stiff
+			stiff=data["stiff"].split("|")
+			stiff = [float(x) for x in stiff]
+			return stiff
+		if _id==5:#LED
+			if data["action"]=="get":
+				i=data["led"].split("|")
+				return [int(round(float(x))) for x in i]
+			if data["action"]=="getGroups":
+				return data["groups"].split("|")
+		if _id==6:#Camera
+			width = 320
+			height = 240
+			image = np.zeros((height, width, 3), np.uint8)
+			r = data["d"]
+			i = 0
+			for y in range(0, height):
+				for x in range(0, width):
+					image.itemset((y, x, 0), values[i + 0])
+					image.itemset((y, x, 1), values[i + 1])
+					image.itemset((y, x, 2), values[i + 2])
+					i += 3
+			return image
 
 	s.close()
 		
 
 #Main(packet)
 
-
-#Old packets
-'''
-#packet = {"id":0,"string":"Hello. My name is Bob"}
-#packet = {"id":1,"action":"get"}
-
-packet = {"id":1,"action":"set","posture":"Sit","speed":1.0}
-#s.send(str(packet).encode())
-
-packet = {"id":0,"string":"Hello. My name is Bob"}
-#s.send(str(packet).encode())
-
-Arm1=[90,0,-90,-85,90]
-JointName=["LShoulderRoll","LShoulderPitch","LElbowYaw","LElbowRoll","LHand"]
-packet = {"id":2,"names":"|".join(str(x) for x in JointName),"angles":"|".join(str(x) for x in Arm1),"speed":0.2}
-s.send(str(packet).encode())
-'''
