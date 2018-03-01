@@ -5,19 +5,32 @@ import numpy as np
 import cv2
 
 
-client.volume_set(50)
-client.say("aaaa")
-width = 320
-height = 240
-image = np.zeros((height, width, 3), np.uint8)
-#image=client.camera_get()
-#cv2.imshow("aa",image)
+
+
+
+
+#client.say("aaaa")
+while True:
+	image=client.camera_get()
+	cv2.imshow("aa",image)
+	if cv2.waitKey(33) == 27:
+		cv2.destroyAllWindows()
+		break
 
 
 
 
 
 
+
+'''
+pos=client.posture_get()
+print(pos)
+if pos=="Sitting":
+	pos="Stand"
+else:
+	pos="Sit"
+'''
 
 #client.say("hi")
 
@@ -40,13 +53,6 @@ print(client.led_get("test"))
 
 '''
 
-
-pos=client.posture_get()
-print(pos)
-if pos=="Sitting":
-	pos="Stand"
-else:
-	pos="Sit"
 
 #client.posture_set(pos)
 #print(client.volume_get())

@@ -1,7 +1,76 @@
 import socket
 import sys
 import numpy as np
+import zlib
+import base64 as b64
+import json
 print(sys.version)
+
+
+def pak(data,s):
+	data = eval(data)
+	#print(data)
+	_id=data["id"]
+
+	if _id==-1:
+		#end=True
+		print("ended")
+
+	if _id==0:#Error
+		print(data["error"])
+		return -1
+
+	if _id==1:
+		return data["posture"]
+	if _id==2:#Motion
+		angles=data["angles"].split("|")
+		angles = [int(round(float(x))) for x in angles]
+		return angles
+	if _id==3:#Volume
+		vol=data["volume"]
+		return int(vol)
+	if _id==4:#Stiff
+		stiff=data["stiff"].split("|")
+		stiff = [float(x) for x in stiff]
+		return stiff
+	if _id==5:#LED
+		if data["action"]=="get":
+			i=data["led"].split("|")
+			return [int(round(float(x))) for x in i]
+		if data["action"]=="getGroups":
+			return data["groups"].split("|")
+	if _id==6:#Camera
+		if data["a"]=="d":
+			st=data["d"]
+			#st = st + "=" * (-len(st) % 4)
+			#st=b64.b64decode(st)
+			#st=zlib.decompress(st)
+			r=json.loads(st)
+			if data["r"]==3:
+				width = 1280
+				height = 720
+			if data["r"]==2:
+				width = 640
+				height = 480
+			if data["r"]==1:
+				width = 320
+				height = 240
+			if data["r"]==7:
+				width = 80
+				height = 60
+
+			image = np.zeros((height, width, 3), np.uint8)
+			i = 0
+			for y in range(0, height):
+				for x in range(0, width):
+					image.itemset((y, x, 0), r[i + 0])
+					image.itemset((y, x, 1), r[i + 1])
+					image.itemset((y, x, 2), r[i + 2])
+					i += 3
+			return image
+	return None
+			
+
 
 def say(txt):
 	packet= {"id":0,"string": txt}
@@ -76,53 +145,22 @@ def Main(packet):
 	s.connect((host,port))
 	s.send(str(packet).encode())
 
-	data={"id":0}
-	while data["id"]>=0:
-		data = s.recv(1024*4)
-		data = eval(data)
+	l=[]
 
-		#print(data)
-		_id=data["id"]
+	pdata=""
+	end=False
+	pack=False
+	while end==False:
+		d = s.recv(1024*1000)
+		d=d.decode()
+		pdata=pdata+d
 
-		if _id==0:
-			print(data["error"])
-			break;
-
-		if _id==1:
-			return data["posture"]
-		if _id==2:#Motion
-			angles=data["angles"].split("|")
-			angles = [int(round(float(x))) for x in angles]
-			return angles
-		if _id==3:#Volume
-			vol=data["volume"]
-			return int(vol)
-		if _id==4:#Stiff
-			stiff=data["stiff"].split("|")
-			stiff = [float(x) for x in stiff]
-			return stiff
-		if _id==5:#LED
-			if data["action"]=="get":
-				i=data["led"].split("|")
-				return [int(round(float(x))) for x in i]
-			if data["action"]=="getGroups":
-				return data["groups"].split("|")
-		if _id==6:#Camera
-			width = 320
-			height = 240
-			image = np.zeros((height, width, 3), np.uint8)
-			r = data["d"]
-			i = 0
-			for y in range(0, height):
-				for x in range(0, width):
-					image.itemset((y, x, 0), values[i + 0])
-					image.itemset((y, x, 1), values[i + 1])
-					image.itemset((y, x, 2), values[i + 2])
-					i += 3
-			return image
+		while("{END}" in str(pdata)):
+			data=pdata.split("{END}",1)
+			pdata=str(data[1])
+			data=data[0]
+			r=pak(data,s)
+			return r;
 
 	s.close()
-		
-
-#Main(packet)
-
+	

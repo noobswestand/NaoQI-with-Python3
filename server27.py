@@ -1,19 +1,21 @@
-import binascii
 import socket
-import struct
 import sys
 import motion
-import threading
 import select
 import msvcrt
 import numpy as np
+import time
+import zlib
+import base64 as b64
+import json
+import threading
 
 print(sys.version)
 
 import socket
 from naoqi import ALProxy
-IP = "10.255.12.120"
-PORT = 9559
+IP = "169.254.165.22"#"10.255.12.120"
+PORT = 9559#9559
 
 
 
@@ -21,14 +23,105 @@ AL_kTopCamera = 0
 AL_kQVGA = 1            # 320x240
 AL_kBGRColorSpace = 13
 videoDevice = ALProxy('ALVideoDevice', IP, PORT)
-captureDevice = videoDevice.subscribeCamera("test", 1, 3, AL_kBGRColorSpace, 10)
+videoResolution=2
+captureDevice = videoDevice.subscribeCamera("test", 1, videoResolution, AL_kBGRColorSpace, 10)
 tts = ALProxy("ALTextToSpeech",IP,PORT)
 postureProxy = ALProxy("ALRobotPosture", IP, PORT)
 mp = ALProxy("ALMotion", IP, PORT)
-aud = ALProxy("ALAudioDevice", IP, PORT)
+#aud = ALProxy("ALAudioDevice", IP, PORT)
 led = ALProxy("ALLeds",IP,PORT)
 
-def cameraGet():
+
+class cameraGetConv(threading.Thread):
+	def __init__(self):
+		super(cameraGetConv, self).__init__()
+		self.done=True
+		self.values=[]
+		self.result=""
+		self.step=-1
+		self.running=True
+	def run(self):
+		global videoResolution
+		while self.running:
+			if self.done==False:
+				st=json.dumps(self.values)
+				#st=zlib.compress(st)
+				#st=b64.b64encode(st)
+				#st = st.rstrip("=")
+				st=str({"id":6,"a":"d","r":videoResolution,"d":st})
+				st+="{END}"
+				self.result=st.encode()
+				self.done=True
+			
+
+class cameraGetConst(threading.Thread):
+	def __init__(self):
+		super(cameraGetConst, self).__init__()
+		self.running=True
+		self.workerLimit=3
+		self.worker = [None] * self.workerLimit
+		self.step=0
+		for i in range(self.workerLimit):
+			self.worker[i]=cameraGetConv()#name="Converter Thread "+str(i)
+			self.worker[i].start()
+	def run(self):
+		while self.running:
+			result = videoDevice.getImageRemote(captureDevice)
+			if result == None:
+				print 'cannot capture.'
+				error("cannot capture.")
+			elif result[6] == None:
+				print 'no image data string.'
+				error("no image data string.")
+			else:
+				self.step+=1
+				did=False
+				for i in range(self.workerLimit):
+					if self.worker[i].done==True:
+						self.worker[i].values=map(ord, list(result[6]))
+						self.worker[i].step=self.step
+						self.worker[i].done=False
+						did=True
+						break;
+				if did==False:
+					print "Could not find worker!"
+	def stop(self):
+		for i in range(self.workerLimit):
+			self.worker[i].running=False
+		self.running=False
+class cameraGetValue(threading.Thread):
+	def __init__(self):
+		super(cameraGetValue, self).__init__()
+		self.running=True
+		self.pck=""
+		self.step=0
+		self.camera=-1
+	def run(self):
+		while self.running:
+			for i in range(self.camera.workerLimit):
+				if camera.worker[i].done==True and camera.worker[i].step>self.step:
+					self.step=camera.worker[i].step
+					self.pck=camera.worker[i].result
+					#print self.step
+	def stop(self):
+		self.running=False
+
+
+camera = cameraGetConst()
+image = cameraGetValue()
+image.camera=camera
+
+camera.start()
+image.start()
+
+def cameraGet(s):
+	global image
+	s.send(image.pck)
+
+
+
+
+def cameraGet_OLD(s):
 	global captureDevice
 	global videoDevice
 	global image
@@ -41,8 +134,12 @@ def cameraGet():
 		error("no image data string.")
 	else:
 		values = map(ord, list(result[6]))
-		packet=packet = {"id":6,"d":"|".join(str(x) for x in values)}
-		return str(packet)
+		st=json.dumps(values)
+		st=zlib.compress(st,zlib.Z_BEST_COMPRESSION)
+		st=b64.b64encode(st)
+		st = st.rstrip("=")
+		send2(str({"id":6,"a":"d","d":st}),s)
+		print "sent image"
 
 def motionSet(names,angles,speed):
 	global mp
@@ -138,6 +235,11 @@ packetError=-1
 def error(err):
 	global packetError
 	packetError = {"id":0,"error":err}
+def send2(st,s):
+	st=str(st)
+	st+="{END}"
+	s.sendall(st.encode())
+	#s.send("{'id':-99,'m':'hi there'}{END}".encode())
 
 quit=False
 def Main():
@@ -160,9 +262,9 @@ def Main():
 			if s is server_socket:
 				client_socket, address = server_socket.accept()
 				read_list.append(client_socket)
-				print "Connection from", address
+				#print "Connection from", address
 			else:
-				data = s.recv(1024*4)
+				data = s.recv(1024*50)
 				if data:
 					print data
 					data=eval(data)
@@ -176,25 +278,25 @@ def Main():
 								postureSet(data["posture"],data["speed"])
 							if data["action"]=="get":
 								r=postureGet()
-								s.send(r.encode())
+								send2(r,s)
 						if _id==2:#Motion
 							if data["action"]=="set":
 								motionSet(data["names"],data["angles"],data["speed"])
 							if data["action"]=="get":
 								a=motionGet(data["names"])
-								s.send(a.encode())
+								send2(a,s)
 						if _id==3:#Volume
 							if data["action"]=="set":
 								volumeSet(int(data["volume"]))
 							if data["action"]=="get":
 								v=volumeGet()
-								s.send(v.encode())
+								send2(v,s)
 						if _id==4:#Stiffness
 							if data["action"]=="set":
 								motionStiffSet(data["names"],data["stiff"])
 							if data["action"]=="get":
 								stiff=motionStiffGet(data["names"])
-								s.send(stiff.encode())
+								send2(stiff,s)
 						if _id==5:#LEDs
 							if data["action"]=="groupCreate":
 								ledGroupCreate(data["groupName"],data["ledNames"])
@@ -210,15 +312,14 @@ def Main():
 								ledFadeRGB(data["groupName"],data["color"],data["d"])
 							if data["action"]=="get":
 								l=ledGet(str(data["led"]))
-								s.send(l.encode())
+								send2(l,s)
 							if data["action"]=="getGroup":
 								l=ledGroupGet()
-								s.send(l.encode())
+								send(l,s)
 							if data["action"]=="reset":
 								l=ledReset(data["led"])
 						if _id==6:#Camera
-							img=cameraGet()
-							s.send(img.encode())
+							img=cameraGet(s)
 
 
 					except:
@@ -228,11 +329,11 @@ def Main():
 
 
 					if type(packetError) is dict:
-						s.send(str(packetError).encode())
+						send2(str(packetError),s)
 					else:
 						packet = {"id":-1}
 						packet = str(packet)
-						s.send(packet.encode())
+						#send2(packet,s)
 
 					s.close()
 					read_list.remove(s)
@@ -266,3 +367,5 @@ while quit==False:
 	Main()
 
 videoDevice.unsubscribe(captureDevice)
+camera.stop()
+image.stop()

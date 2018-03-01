@@ -1,4 +1,7 @@
-make it so it can recive multiple packets + append them together
+make client faster
+
+make video_stream option that creates the objects + uses threads to get image faster
+
 
 video
 
