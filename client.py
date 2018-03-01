@@ -4,6 +4,8 @@ import numpy as np
 import zlib
 import base64 as b64
 import json
+import time
+
 print(sys.version)
 
 
@@ -13,8 +15,8 @@ def pak(data,s):
 	_id=data["id"]
 
 	if _id==-1:
-		#end=True
-		print("ended")
+		end=True
+		#print("ended")
 
 	if _id==0:#Error
 		print(data["error"])
@@ -41,11 +43,6 @@ def pak(data,s):
 			return data["groups"].split("|")
 	if _id==6:#Camera
 		if data["a"]=="d":
-			st=data["d"]
-			#st = st + "=" * (-len(st) % 4)
-			#st=b64.b64decode(st)
-			#st=zlib.decompress(st)
-			r=json.loads(st)
 			if data["r"]==3:
 				width = 1280
 				height = 720
@@ -59,14 +56,9 @@ def pak(data,s):
 				width = 80
 				height = 60
 
-			image = np.zeros((height, width, 3), np.uint8)
-			i = 0
-			for y in range(0, height):
-				for x in range(0, width):
-					image.itemset((y, x, 0), r[i + 0])
-					image.itemset((y, x, 1), r[i + 1])
-					image.itemset((y, x, 2), r[i + 2])
-					i += 3
+			b = bytearray()
+			b.extend(map(ord, data["d"]))
+			image=np.array(b).reshape(height, width,3)
 			return image
 	return None
 			
@@ -138,6 +130,11 @@ def camera_get():
 	packet = {"id":6,"action":"get"}
 	return Main(packet)
 
+
+def memory_set(var,val):
+	packet = {"id":7,"action":"set"}
+
+
 def Main(packet):
 	host = "127.0.0.1"
 	port = 1337
@@ -150,6 +147,7 @@ def Main(packet):
 	pdata=""
 	end=False
 	pack=False
+	start_time = time.time()
 	while end==False:
 		d = s.recv(1024*1000)
 		d=d.decode()
@@ -159,6 +157,7 @@ def Main(packet):
 			data=pdata.split("{END}",1)
 			pdata=str(data[1])
 			data=data[0]
+			#print("--- %s seconds ---" % (time.time() - start_time))
 			r=pak(data,s)
 			return r;
 

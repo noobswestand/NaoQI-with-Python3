@@ -6,17 +6,19 @@ import cv2
 
 
 
+#client.volume_set(50)
+#client.say("")
 
 
-
-#client.say("aaaa")
 while True:
+	start_time = time.time()
 	image=client.camera_get()
+	print("--- %s seconds ---" % (time.time() - start_time))
+
 	cv2.imshow("aa",image)
 	if cv2.waitKey(33) == 27:
 		cv2.destroyAllWindows()
 		break
-
 
 
 

@@ -1,8 +1,12 @@
-make client faster
+Make it so the client makes a constant connection to the server
+	have start + stop functions
+	Have the client.py run a seperate thread
 
-make video_stream option that creates the objects + uses threads to get image faster
+
 
 
 video
 
 AL Memory
+	get sensors
+	re-create the meow program in test.py

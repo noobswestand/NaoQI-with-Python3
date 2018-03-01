@@ -14,8 +14,10 @@ print(sys.version)
 
 import socket
 from naoqi import ALProxy
-IP = "169.254.165.22"#"10.255.12.120"
-PORT = 9559#9559
+from naoqi import ALBroker
+from naoqi import ALModule
+IP = "10.255.12.120"#"127.0.0.1"
+PORT = 9559#59592#9559
 
 
 
@@ -28,8 +30,40 @@ captureDevice = videoDevice.subscribeCamera("test", 1, videoResolution, AL_kBGRC
 tts = ALProxy("ALTextToSpeech",IP,PORT)
 postureProxy = ALProxy("ALRobotPosture", IP, PORT)
 mp = ALProxy("ALMotion", IP, PORT)
-#aud = ALProxy("ALAudioDevice", IP, PORT)
+if PORT==9559:
+	aud = ALProxy("ALAudioDevice", IP, PORT)
 led = ALProxy("ALLeds",IP,PORT)
+mem = ALProxy("ALMemory",IP,PORT)
+
+
+ReactToTouch = None
+class ReactToTouch(ALModule):
+	def __init__(self, name):
+		ALModule.__init__(self, name)
+		global mem
+		mem.subscribeToEvent("TouchChanged","ReactToTouch","onTouched")
+
+	def onTouched(self, strVarName, value):
+		print value[0][0],value[0][1]
+myBroker = ALBroker("myBroker","0.0.0.0",0,IP,PORT)
+ReactToTouch = ReactToTouch("ReactToTouch")
+
+
+videoResolutionWidth=0
+videoResolutionHeight=0
+if videoResolution==3:
+	videoResolutionWidth = 1280
+	videoResolutionHeight = 720
+if videoResolution==2:
+	videoResolutionWidth = 640
+	videoResolutionHeight = 480
+if videoResolution==1:
+	videoResolutionWidth = 320
+	videoResolutionHeight = 240
+if videoResolution==7:
+	videoResolutionWidth = 80
+	videoResolutionHeight = 60
+
 
 
 class cameraGetConv(threading.Thread):
@@ -40,33 +74,38 @@ class cameraGetConv(threading.Thread):
 		self.result=""
 		self.step=-1
 		self.running=True
+		self.pid=-1
 	def run(self):
 		global videoResolution
+		global videoResolutionHeight
+		global videoResolutionWidth
 		while self.running:
 			if self.done==False:
-				st=json.dumps(self.values)
-				#st=zlib.compress(st)
-				#st=b64.b64encode(st)
-				#st = st.rstrip("=")
-				st=str({"id":6,"a":"d","r":videoResolution,"d":st})
+				st=str({"id":6,"a":"d","r":videoResolution,"d":self.values})
 				st+="{END}"
 				self.result=st.encode()
 				self.done=True
+				global image
+				image.update(self.pid)
 			
 
 class cameraGetConst(threading.Thread):
 	def __init__(self):
 		super(cameraGetConst, self).__init__()
 		self.running=True
-		self.workerLimit=3
+		self.workerLimit=4
 		self.worker = [None] * self.workerLimit
 		self.step=0
 		for i in range(self.workerLimit):
-			self.worker[i]=cameraGetConv()#name="Converter Thread "+str(i)
+			self.worker[i]=cameraGetConv()
+			self.worker[i].pid=i;
 			self.worker[i].start()
 	def run(self):
 		while self.running:
+			#start_time = time.time()
 			result = videoDevice.getImageRemote(captureDevice)
+			#print("--- %s seconds ---" % (time.time() - start_time))
+			
 			if result == None:
 				print 'cannot capture.'
 				error("cannot capture.")
@@ -78,7 +117,7 @@ class cameraGetConst(threading.Thread):
 				did=False
 				for i in range(self.workerLimit):
 					if self.worker[i].done==True:
-						self.worker[i].values=map(ord, list(result[6]))
+						self.worker[i].values=str(result[6])
 						self.worker[i].step=self.step
 						self.worker[i].done=False
 						did=True
@@ -89,30 +128,35 @@ class cameraGetConst(threading.Thread):
 		for i in range(self.workerLimit):
 			self.worker[i].running=False
 		self.running=False
-class cameraGetValue(threading.Thread):
+class cameraGetValue():
 	def __init__(self):
-		super(cameraGetValue, self).__init__()
 		self.running=True
 		self.pck=""
 		self.step=0
 		self.camera=-1
+	'''
 	def run(self):
 		while self.running:
 			for i in range(self.camera.workerLimit):
-				if camera.worker[i].done==True and camera.worker[i].step>self.step:
+				if self.camera.worker[i].done==True and self.camera.worker[i].step>self.step:
 					self.step=camera.worker[i].step
 					self.pck=camera.worker[i].result
-					#print self.step
+	'''
 	def stop(self):
 		self.running=False
+	def update(self,i):
+		if self.camera.worker[i].done==True and self.camera.worker[i].step>self.step:
+				self.step=camera.worker[i].step
+				self.pck=camera.worker[i].result
+
 
 
 camera = cameraGetConst()
 image = cameraGetValue()
 image.camera=camera
-
 camera.start()
-image.start()
+#image.start()
+
 
 def cameraGet(s):
 	global image
@@ -166,12 +210,20 @@ def postureGet():
 	packet = str(packet)
 	return packet
 def volumeSet(vol):
-	global aud
-	aud.setOutputVolume(vol)
+	global PORT
+	if PORT==9559:
+		global aud
+		aud.setOutputVolume(vol)
+	else:
+		print "Cannot use audio functions on virutal robot!"
 def volumeGet():
-	global aud
-	packet = {"id":3,"volume":str(aud.getOutputVolume())}
-	return str(packet)
+	global PORT
+	if PORT==9559:
+		global aud
+		packet = {"id":3,"volume":str(aud.getOutputVolume())}
+		return str(packet)
+	else:
+		print "Cannot use audio functions on virutal robot!"
 
 def motionStiffSet(names,stiff):
 	global mp
@@ -257,7 +309,7 @@ def Main():
 				print "Stopping..."
 				quit=True
 
-		readable, writable, errored = select.select(read_list, [], [],1)
+		readable, writable, errored = select.select(read_list, [], [], 0.5)
 		for s in readable:
 			if s is server_socket:
 				client_socket, address = server_socket.accept()
@@ -333,7 +385,7 @@ def Main():
 					else:
 						packet = {"id":-1}
 						packet = str(packet)
-						#send2(packet,s)
+						send2(packet,s)
 
 					s.close()
 					read_list.remove(s)
