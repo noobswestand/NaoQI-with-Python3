@@ -10,13 +10,15 @@ import base64 as b64
 import json
 import threading
 
+import cv2
+
 print(sys.version)
 
 import socket
 from naoqi import ALProxy
 from naoqi import ALBroker
 from naoqi import ALModule
-IP = "10.255.12.120"#"127.0.0.1"
+IP = "10.255.19.209"#"10.255.14.124"#"127.0.0.1"
 PORT = 9559#59592#9559
 
 
@@ -26,34 +28,22 @@ AL_kQVGA = 1            # 320x240
 AL_kBGRColorSpace = 13
 videoDevice = ALProxy('ALVideoDevice', IP, PORT)
 videoResolution=2
-captureDevice = videoDevice.subscribeCamera("test", 1, videoResolution, AL_kBGRColorSpace, 10)
-tts = ALProxy("ALTextToSpeech",IP,PORT)
+captureDevice = videoDevice.subscribeCamera("test", AL_kTopCamera, videoResolution, AL_kBGRColorSpace, 10)
+tts = ALProxy("ALAnimatedSpeech",IP,PORT)
 postureProxy = ALProxy("ALRobotPosture", IP, PORT)
 mp = ALProxy("ALMotion", IP, PORT)
 if PORT==9559:
 	aud = ALProxy("ALAudioDevice", IP, PORT)
 led = ALProxy("ALLeds",IP,PORT)
 mem = ALProxy("ALMemory",IP,PORT)
-
-
-ReactToTouch = None
-class ReactToTouch(ALModule):
-	def __init__(self, name):
-		ALModule.__init__(self, name)
-		global mem
-		mem.subscribeToEvent("TouchChanged","ReactToTouch","onTouched")
-
-	def onTouched(self, strVarName, value):
-		print value[0][0],value[0][1]
-myBroker = ALBroker("myBroker","0.0.0.0",0,IP,PORT)
-ReactToTouch = ReactToTouch("ReactToTouch")
+tou = ALProxy("ALTouch", IP,PORT)
 
 
 videoResolutionWidth=0
 videoResolutionHeight=0
 if videoResolution==3:
 	videoResolutionWidth = 1280
-	videoResolutionHeight = 720
+	videoResolutionHeight = 960
 if videoResolution==2:
 	videoResolutionWidth = 640
 	videoResolutionHeight = 480
@@ -134,14 +124,6 @@ class cameraGetValue():
 		self.pck=""
 		self.step=0
 		self.camera=-1
-	'''
-	def run(self):
-		while self.running:
-			for i in range(self.camera.workerLimit):
-				if self.camera.worker[i].done==True and self.camera.worker[i].step>self.step:
-					self.step=camera.worker[i].step
-					self.pck=camera.worker[i].result
-	'''
 	def stop(self):
 		self.running=False
 	def update(self,i):
@@ -150,20 +132,35 @@ class cameraGetValue():
 				self.pck=camera.worker[i].result
 
 
-
 camera = cameraGetConst()
 image = cameraGetValue()
 image.camera=camera
 camera.start()
-#image.start()
-
-
 def cameraGet(s):
 	global image
 	s.send(image.pck)
 
 
+class touchGet(threading.Thread):
+	def __init__(self):
+		super(touchGet, self).__init__()
+		self.running=True
+		self.packet="";
+	def run(self):
+		while self.running==True:
+			global tou
+			status = tou.getStatus()
+			self.packet = {"id":7,"status":status}
+	def stop(self):
+		self.running=False
 
+touch=touchGet()
+touchRunning=False
+#touch.start()
+
+def touchGet():
+	global touch
+	return str(touch.packet)
 
 def cameraGet_OLD(s):
 	global captureDevice
@@ -199,9 +196,10 @@ def motionGet(names):
 	a = [ x * motion.TO_DEG for x in a]
 	packet = {"id":2,"angles":"|".join(str(x) for x in a)}
 	return str(packet)
-def say(txt):
+def say(txt,conf):
 	global tts
-	tts.post.say(txt)
+	tts.post.say(txt,conf)
+	print conf
 def postureSet(pos,speed):
 	postureProxy.post.goToPosture(pos,speed)
 def postureGet():
@@ -246,10 +244,10 @@ def ledGroupCreate(groupName,names):
 	led.createGroup(groupName,names)
 def ledOn(groupName):
 	global led
-	led.on(groupName)
+	led.post.on(groupName)
 def ledOff(groupName):
 	global led
-	led.off(groupName)
+	led.post.off(groupName)
 def ledFade(groupName,i,d):
 	global led
 	led.post.fade(groupName,i,d)
@@ -282,6 +280,9 @@ def ledGroupGet():
 def ledReset(l):
 	global led
 	led.reset(l)
+def ledEar(degree,duration,leave):
+	global led
+	led.earLedsSetAngle(degree,duration,leave)
 
 packetError=-1
 def error(err):
@@ -324,7 +325,7 @@ def Main():
 
 					try:
 						if _id==0:#Say
-							say(data["string"])
+							say(data["string"],eval(data["conf"]))
 						if _id==1:#Posture
 							if data["action"]=="set":
 								postureSet(data["posture"],data["speed"])
@@ -370,8 +371,13 @@ def Main():
 								send(l,s)
 							if data["action"]=="reset":
 								l=ledReset(data["led"])
+							if data["action"]=="ear":
+								l=ledEar(int(data["degree"]),float(data["duration"]),bool(data["leave"]))
 						if _id==6:#Camera
 							img=cameraGet(s)
+						if _id==7:#Touch
+							touch=touchGet()
+							send2(touch,s)
 
 
 					except:
@@ -421,3 +427,4 @@ while quit==False:
 videoDevice.unsubscribe(captureDevice)
 camera.stop()
 image.stop()
+touch.stop()

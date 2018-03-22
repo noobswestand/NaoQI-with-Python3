@@ -1,12 +1,10 @@
-Make it so the client makes a constant connection to the server
-	have start + stop functions
-	Have the client.py run a seperate thread
+Force head into reasonable position
+
+
+make touch and camera have start and stop timers
+	so it doesn't constantly spam the robot
 
 
 
 
-video
-
-AL Memory
-	get sensors
-	re-create the meow program in test.py
+python -m pip install XXX 

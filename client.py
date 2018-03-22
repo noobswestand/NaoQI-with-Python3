@@ -45,7 +45,7 @@ def pak(data,s):
 		if data["a"]=="d":
 			if data["r"]==3:
 				width = 1280
-				height = 720
+				height = 960
 			if data["r"]==2:
 				width = 640
 				height = 480
@@ -60,12 +60,27 @@ def pak(data,s):
 			b.extend(map(ord, data["d"]))
 			image=np.array(b).reshape(height, width,3)
 			return image
+	if _id==7:#Touch
+		return data["status"]
+
 	return None
 			
 
+def touch_get(p=[]):
+	packet={"id":7}
+	status=Main(packet)
+	if not p:
+		return status
+	else:
+		statList=[]
+		for e in status:
+			if e[0] in p:
+				statList.append((e[0],e[1]))
+		return statList
 
-def say(txt):
-	packet= {"id":0,"string": txt}
+
+def say(txt,conf=str({"bodyLanguageMode":"contextual"})):
+	packet= {"id":0,"string": txt,"conf":str(conf)}
 	Main(packet)
 def posture_get():
 	packet = {"id":1,"action":"get"}
@@ -124,7 +139,9 @@ def led_group_get():
 def led_reset(g):
 	packet = {"id":5,"action":"get","led":g}
 	return Main(packet)
-
+def led_ear(degree,duration,leave):
+	packet = {"id":5,"action":"ear","degree":degree,"duration":duration,"leave":leave}
+	return Main(packet)
 
 def camera_get():
 	packet = {"id":6,"action":"get"}
